@@ -19,14 +19,14 @@ allowed-tools:
 - Branch: !`git branch --show-current 2>&1 || true`
 - Status: !`git status --short --branch 2>&1 || true`
 - Remotes: !`git remote -v 2>&1 || true`
-- Unpushed commits: !`git log --oneline @{upstream}..HEAD 2>&1 || true`
+- Unpushed commits: !`git log --oneline HEAD --not --remotes 2>&1 || true`
 
 User request (may be empty): $ARGUMENTS
 
 ## Steps
 
 1. Check before pushing:
-   - No remote: offer to create the Github repository with `gh repo create <name> --private --source=. --remote=orign`. Ask for the name and visibility first, and don't create it without the user's OK.
+   - No remote: offer to create the Github repository with `gh repo create <name> --private --source=. --remote=origin`. Ask for the name and visibility first, and don't create it without the user's OK.
    - Detached HEAD: stop and explain that a branch is needed first.
    - Uncommitted changes: point them out, since they won't be pushed, and offer to commit them first with the commit skill.
    - Nothing to push: say so and stop.
