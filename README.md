@@ -16,7 +16,7 @@ My personal [Claude Code](https://code.claude.com) skills for everyday developme
 git clone https://github.com/Blaeste/claude-skills.git
 cd claude-skills
 mkdir -p ~/.claude/skills
-ln -s "$PWD/skills/link-skill" ~/.claude/skills/link-skill
+ln -s "$PWD/skills/tools/link-skill" ~/.claude/skills/link-skill
 ```
 
 Then type `/link-skill` in Claude Code to link all the other skills.
