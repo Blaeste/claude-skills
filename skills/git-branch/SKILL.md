@@ -10,6 +10,7 @@ allowed-tools:
    - Bash(git log *)
    - Bash(git fetch *)
    - Bash(git switch -c *)
+   - Bash(git pull --ff-only)
    - Bash(git symbolic-ref --short refs/remotes/origin/HEAD)
 ---
 
@@ -40,6 +41,8 @@ The main branch is the default remote branch shown above. If that line is empty 
 ## Switch branch
 
 Run `git switch <name>`. If git refuses because of uncommitted changes, offer to commit them or to stash them (`git stash push -m "<reason>"`, restored with `git stash pop`). Never use `--discard-changes` or `-f` without the user's OK: they delete work.
+
+After switching, run `git fetch origin`, because git only knows the remote state from the last fetch. If the branch is behind its remote, say how many commits and ask whether to pull them. If the user agrees, run `git pull --ff-only`: it only fast-forwards, so it can't create a merge commit or lose local work. If it refuses because the branch has diverged, explain why and offer the sync section below.
 
 ## Sync with the main branch
 
