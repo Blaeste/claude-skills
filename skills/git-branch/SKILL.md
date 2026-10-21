@@ -26,7 +26,7 @@ User request (may be empty): $ARGUMENTS
 
 Pick the action from the request: a task description means create, "sync" means update with the main branch, "clean" means clean up, an existing branch name means switch.
 
-The main branch is the default remote branch shown above. If that line is empty or an error, use main or master, wichever exists.
+The main branch is the default remote branch shown above. If that line is empty or an error, use main or master, whichever exists.
 
 ## Create a branch
 
@@ -34,7 +34,7 @@ The main branch is the default remote branch shown above. If that line is empty 
 2. Start from an up-to-date main branch, to avoid conflicts later:
    - Clean working tree with a remote: run `git fetch origin`, then `git switch -c <name> --no-track origin/<main>`. Without `--no-track`, the new branch would track main and `git push` would try to push to it.
    - No remote: `git switch -c <name> <main>`.
-   - Uncommited changes: `git switch -c <name>` from the current position takes them along, which is usually what the user wants ("I started on main by mistake"). Say so.
+   - Uncommitted changes: `git switch -c <name>` from the current position takes them along, which is usually what the user wants ("I started on main by mistake"). Say so.
 3. Report the branch name, its starting point, and the next steps (/git-commit, /git-push, /git-pr).
 
 ## Switch branch
@@ -46,7 +46,7 @@ Run `git switch <name>`. If git refuses because of uncommitted changes, offer to
 1. The working tree must be clean (commit or stash first).
 2. Run `git fetch origin`.
 3. Choose the method and explain the choice in one sentence:
-   - rebase if the branch was never pushed or only the user work on it, for a linear history: `git rebase origin/<main>`
+   - rebase if the branch was never pushed or only the user works on it, for a linear history: `git rebase origin/<main>`
    - merge if the branch is already pushed and shared, so other people's history isn't rewritten: `git merge --no-edit origin/<main>`
 4. On conflicts, list the files, read both sides and keep the intent of each; ask the user when it's ambiguous. Then run `git add <files>` and `GIT_EDITOR=true git rebase --continue` (the variable stops git from opening an editor, which would hang). `git rebase --abort` or `git merge --abort` restore everything: tell the user.
 5. After rebasing a branch that was already pushed, the next push must be forced: warn the user and let the git-push skill handle it.
