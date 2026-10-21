@@ -1,5 +1,5 @@
 ---
-name: commit
+name: git-commit
 description: Create clean, atomic git commits in the Conventional Commit format from the current changes. Use whenever the user asks to commit or to save their work in git, or when committing is a step of the current task.
 argument-hint: "[message hint]"
 allowed-tools:
