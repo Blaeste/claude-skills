@@ -6,6 +6,18 @@ skills_dir="$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")"
 target_dir="$HOME/.claude/skills"
 mkdir -p "$target_dir"
 
+# Remove links to skills that were renamed or deleted in this repository.
+for link in "$target_dir"/*; do
+  if [ -L "$link" ] && [ ! -e "$link" ]; then
+    case "$(readlink "$link")" in
+      "$skills_dir"/*)
+        rm "$link"
+        echo "removed  $(basename "$link") (no longer in the repo)"
+        ;;
+    esac
+  fi
+done
+
 for skill in "$skills_dir"/*/; do
   skill="${skill%/}"
   name="$(basename "$skill")"
