@@ -24,9 +24,9 @@ User hint (may be empty): $ARGUMENTS
 ## Steps
 
 1. Not a git repository: say so and offer `git init`. Nothing to commit: say so and stop.
-2. Read the diffs and the new files before writting anything: the message describes the intent, and file names alone don't reveal it.
+2. Read the diffs and the new files before writing anything: the message describes the intent, and file names alone don't reveal it.
 3. Never stage secrets (.env, private keys, tokens): once pushed, a secret stays compromised even after you delete it. Skip build artifacts too (*.o, a.out, node_modules/). Point them out and suggest adding them to .gitignore.
-4. one commit per intent: if the changes mix unrelated work, split them by staging files by path. If the user already staged a selection, commit only that.
+4. One commit per intent: if the changes mix unrelated work, split them by staging files by path. If the user already staged a selection, commit only that.
 5. Write each message as `<type>(<scope>): <summary>`:
    - types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
    - summary in English, imperative mood, 72 characters max, no trailing period
