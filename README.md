@@ -8,7 +8,12 @@ My personal [Claude Code](https://code.claude.com) skills for everyday developme
 | `/git-push` | Safe push that offers to commit first |
 | `/git-branch` | Create, switch, sync and clean up branches |
 | `/git-pr` | Open a GitHub pull request with a structured description |
+| `/check` | Run the project's checks (lint, types, tests, build, norminette) and fix them on request |
+| `/proofread` | Fix spelling, grammar and typos in docs and comments, then report each fix |
+| `/update-docs` | Update the README and docs from their content, the project files and your notes |
 | `/link-skill` | Link the skills of this repo into `~/.claude/skills` |
+
+Skills are grouped by category in `skills/<category>/<name>/`: `git`, `quality`, `docs` and `tools`.
 
 ## Install
 
