@@ -11,9 +11,12 @@ My personal [Claude Code](https://code.claude.com) skills for everyday developme
 | `/check` | Run the project's checks (lint, types, tests, build, norminette) and fix them on request |
 | `/proofread` | Fix spelling, grammar and typos in docs and comments, then report each fix |
 | `/update-docs` | Update the README and docs from their content, the project files and your notes |
+| `/create-docs` | Write a new doc (guide, architecture, how-to) from your notes, checked against the project |
+| `/explain-code` | Explain a file, a function or the selected code step by step, to learn from it |
+| `/create-skill` | Create a new skill in this repo from your instructions, following its conventions |
 | `/link-skill` | Link the skills of this repo into `~/.claude/skills` |
 
-Skills are grouped by category in `skills/<category>/<name>/`: `git`, `quality`, `docs` and `tools`.
+Skills are grouped by category in `skills/<category>/<name>/`: `git`, `quality`, `docs`, `study` and `tools`.
 
 ## Install
 
