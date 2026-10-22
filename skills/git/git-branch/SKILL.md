@@ -56,7 +56,7 @@ After switching, run `git fetch origin`, because git only knows the remote state
 
 ## Clean up
 
-1. Run `git fetch --prune`
+1. Run `git fetch --prune`.
 2. Candidates: `git branch --merged origin/<main>` and the branches marked `[gone]` in `git branch -vv`.
 3. Show the list and ask for confirmation before deleting anything.
 4. Delete merged branches with `git branch -d`. Use `-D` only for `[gone]` branches after explicit confirmation, since it also deletes unmerged work.
