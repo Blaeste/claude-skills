@@ -28,3 +28,9 @@ ln -s "$PWD/skills/tools/link-skill" ~/.claude/skills/link-skill
 ```
 
 Then type `/link-skill` in Claude Code to link all the other skills.
+
+
+## Docs
+
+- [Adding a skill](docs/adding-a-skill.md)
+
