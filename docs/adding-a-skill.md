@@ -26,7 +26,7 @@ It asks about anything unclear, picks the category folder (or proposes a new one
 
 ### By hand
 
-Create `skills/<category>/<name>/SKILL.md`. The existing categories are `git`, `quality`, `docs`, `study` and `tools`.
+Create `skills/<category>/<name>/SKILL.md`. The existing categories are `git`, `quality`, `docs`, `study`, `workflow` and `tools`.
 
 - Name it in English kebab-case, with the category prefix when it has one (`git-` for git skills). It must be unique across all categories, because the links in `~/.claude/skills` are flat.
 - Check that the name isn't a built-in command such as `/branch`, `/commit` or `/pr`: a skill with the same name replaces it.
@@ -62,3 +62,5 @@ Type `/<name>` with a realistic request and check the result. Then make the same
 ```
 
 It makes one commit per intent, for example `feat(<name>): add <name> skill`, then offers to push with `/git-push`.
+
+To run the checks, commit and push in one go, with a single confirmation, use `/ship` instead.
