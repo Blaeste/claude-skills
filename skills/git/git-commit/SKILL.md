@@ -34,5 +34,5 @@ User hint (may be empty): $ARGUMENTS
    - the user hint above takes priority
 6. Commit with `git commit -m "<summary>"` (add `-m "<body>"` for a body). If a pre-commit hook fails, fix the cause and commit again. Don't use --amend or --no-verify unless the user asks.
 7. Show the new commits with `git log --oneline -<n>`.
-8. Don't push on your own: ask the user whether to push the new commits. If they agree, run the git-push skill. Skip this question when the commit was a step of the git-push skill, since it pushes right after.
+8. Don't push on your own: ask the user whether to push the new commits. If they agree, run the git-push skill. Skip this question when the commit was a step of the git-push or ship skill, since they push right after.
 
