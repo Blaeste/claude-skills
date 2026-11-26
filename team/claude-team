@@ -1,0 +1,389 @@
+#!/usr/bin/env bash
+# claude-team: run an orchestrator, coders and a verifier as Claude Code
+# sessions side by side in tmux, each coder in its own git worktree.
+# Run `claude-team help` for the commands.
+set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+TEAM_HOME="$(dirname "$SELF")"
+ROLES="$TEAM_HOME/roles"
+
+MODEL="${CLAUDE_TEAM_MODEL:-opus}"
+CODERS="${CLAUDE_TEAM_CODERS:-3}"
+# Every member must run in the same permission mode: a session holds the
+# messages of a session in another mode until its user approves them.
+MODE="auto"
+
+die()  { printf 'claude-team: %s\n' "$*" >&2; exit 1; }
+q()    { printf '%q' "$1"; }
+
+usage() {
+	cat <<'EOF'
+claude-team: an orchestrator, coders and a verifier as Claude Code sessions in tmux.
+
+Usage (from the main folder of any git repository):
+  claude-team [start] [--coders N] [--no-attach]
+                    create the worktrees and open the team in tmux
+                    (attaches to the team instead if it is already running)
+  claude-team attach  reopen the running team of this project
+  claude-team status  show the team's sessions, branches and board
+  claude-team stop    close the team (conversations are kept)
+  claude-team clean [--force]
+                    delete the team's worktrees, branches and state;
+                    refuses when work is not merged, unless --force
+  claude-team install link this script into ~/.local/bin
+  claude-team help    show this help
+
+Environment:
+  CLAUDE_TEAM_MODEL   model of every member (default: opus)
+  CLAUDE_TEAM_CODERS  number of coders (default: 3)
+
+In tmux: click a pane to talk to that member, Ctrl-b d to detach.
+EOF
+}
+
+# ---------- project ----------
+
+load_project() {
+	ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
+		|| die "run this inside a git repository"
+	local git_dir
+	git_dir="$(git -C "$ROOT" rev-parse --absolute-git-dir)"
+	COMMON="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd)"
+	[ "$git_dir" = "$COMMON" ] \
+		|| die "run this from the main folder of the repository, not from a worktree"
+	STATE="$COMMON/claude-team"
+	WT_DIR="$ROOT/.claude/worktrees"
+	SLUG="$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' \
+		| sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+	[ -n "$SLUG" ] || SLUG="project"
+	TS="team-$SLUG"
+}
+
+name_of() { printf '%s-%s' "$SLUG" "$1"; }
+
+running() { tmux has-session -t "=$TS" 2>/dev/null; }
+
+saved_base() {
+	if [ -f "$STATE/base" ]; then
+		cat "$STATE/base"
+	else
+		git -C "$ROOT" symbolic-ref --quiet --short HEAD || true
+	fi
+}
+
+# ---------- start ----------
+
+setup_worktrees() {
+	mkdir -p "$WT_DIR" "$STATE"
+	local exclude="$COMMON/info/exclude"
+	if ! grep -qxF '.claude/worktrees/' "$exclude" 2>/dev/null; then
+		mkdir -p "$COMMON/info"
+		printf '\n# claude-team worktrees\n.claude/worktrees/\n' >>"$exclude"
+	fi
+	git -C "$ROOT" worktree prune
+
+	local i path branch
+	for i in $(seq 1 "$CODERS"); do
+		path="$WT_DIR/team-coder-$i"
+		branch="team/coder-$i"
+		[ -d "$path" ] && continue
+		if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$branch"; then
+			git -C "$ROOT" worktree add --quiet "$path" "$branch"
+		else
+			git -C "$ROOT" worktree add --quiet -b "$branch" "$path" "$BASE"
+		fi
+	done
+	path="$WT_DIR/team-verifier"
+	[ -d "$path" ] || git -C "$ROOT" worktree add --quiet --detach "$path" "$BASE"
+}
+
+write_roster() {
+	local i
+	{
+		echo "# Team"
+		echo
+		echo "You run in the tmux session \`$TS\` with the other members below."
+		echo "Their SendMessage name is their address: use it exactly."
+		echo
+		echo "- Project: $ROOT"
+		echo "- Base branch: $BASE"
+		echo "- Board file (kept by the orchestrator): $STATE/board.md"
+		echo
+		echo "| Role | SendMessage name | Folder | Branch |"
+		echo "|---|---|---|---|"
+		echo "| orchestrator | $(name_of orchestrator) | $ROOT (main worktree) | $BASE |"
+		for i in $(seq 1 "$CODERS"); do
+			echo "| coder $i | $(name_of "coder-$i") | $WT_DIR/team-coder-$i | team/coder-$i |"
+		done
+		echo "| verifier | $(name_of verifier) | $WT_DIR/team-verifier | detached HEAD |"
+	} >"$STATE/roster.md"
+}
+
+# write_member MEMBER ROLE FOLDER: the prompt and the launcher of one member
+write_member() {
+	local member="$1" role="$2" dir="$3" name launcher
+	name="$(name_of "$member")"
+	{
+		cat "$ROLES/$role.md"
+		echo
+		cat "$STATE/roster.md"
+		echo
+		echo "**You are $member** (SendMessage name: \`$name\`)."
+	} >"$STATE/prompt-$member.md"
+
+	launcher="$STATE/launch-$member.sh"
+	{
+		echo '#!/usr/bin/env bash'
+		echo "cd $(q "$dir") || exit 1"
+		echo "claude --model $(q "$MODEL") --permission-mode $MODE -n $(q "$name") \\"
+		echo "	--append-system-prompt \"\$(cat $(q "$STATE/prompt-$member.md"))\""
+		echo "echo"
+		echo "echo $(q "[claude-team] $name ended. Relaunch it with: $launcher")"
+		echo 'exec "${SHELL:-bash}"'
+	} >"$launcher"
+	chmod +x "$launcher"
+}
+
+# split TARGET FLAGS... FOLDER MEMBER: open a pane running MEMBER, print its id
+split() {
+	local target="$1" dir="${@: -2:1}" member="${@: -1}" pane
+	local flags=("${@:2:$#-3}")
+	pane="$(tmux split-window "${flags[@]}" -P -F '#{pane_id}' -t "$target" \
+		-c "$dir" "$(q "$STATE/launch-$member.sh")")"
+	tmux set-option -p -t "$pane" @role "$member" >/dev/null
+	printf '%s' "$pane"
+}
+
+open_tmux() {
+	local size=() orch prev i pct
+	if [ -t 1 ]; then size=(-x "$(tput cols)" -y "$(tput lines)"); fi
+
+	orch="$(tmux new-session -d -P -F '#{pane_id}' -s "$TS" -n team -c "$ROOT" \
+		${size[@]+"${size[@]}"} "$(q "$STATE/launch-orchestrator.sh")")"
+	tmux set-option -t "=$TS:" mouse on >/dev/null
+	tmux set-window-option -t "=$TS:team" pane-border-status top >/dev/null
+	tmux set-window-option -t "=$TS:team" pane-border-format ' #{@role} ' >/dev/null
+	tmux set-option -p -t "$orch" @role "orchestrator" >/dev/null
+
+	# right column: the coders, in equal heights
+	prev="$(split "$orch" -h -l 50% "$WT_DIR/team-coder-1" coder-1)"
+	for i in $(seq 2 "$CODERS"); do
+		pct=$((100 * (CODERS - i + 1) / (CODERS - i + 2)))
+		prev="$(split "$prev" -v -l "$pct%" "$WT_DIR/team-coder-$i" "coder-$i")"
+	done
+	# left column: the verifier under the orchestrator
+	split "$orch" -v -l 35% "$WT_DIR/team-verifier" verifier >/dev/null
+	tmux select-pane -t "$orch"
+}
+
+# Interactive sessions need the project folder itself to be trusted (a trusted
+# parent folder isn't enough); the worktrees inside it then inherit that trust.
+warn_if_untrusted() {
+	command -v python3 >/dev/null || return 0
+	python3 -I -c '
+import json, sys
+try:
+    projects = json.load(open(sys.argv[2])).get("projects", {})
+except (OSError, ValueError):
+    sys.exit(0)
+sys.exit(0 if projects.get(sys.argv[1], {}).get("hasTrustDialogAccepted") else 1)
+' "$ROOT" "$HOME/.claude.json" && return 0
+	echo "Claude Code doesn't trust this project yet: every pane will ask 'Do you trust"
+	echo "this folder?'. To answer only once, run 'claude' here, accept, then start the team."
+	if [ -t 0 ]; then
+		local answer
+		read -r -p "Start anyway and answer in each pane? [y/N] " answer
+		[[ "$answer" =~ ^[yYoO] ]] || exit 0
+	fi
+}
+
+attach() {
+	if [ -n "${TMUX:-}" ]; then
+		tmux switch-client -t "=$TS"
+	else
+		tmux attach-session -t "=$TS"
+	fi
+}
+
+cmd_start() {
+	local do_attach=1
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--coders) [ $# -ge 2 ] || die "--coders needs a number"; CODERS="$2"; shift 2 ;;
+		--coders=*) CODERS="${1#*=}"; shift ;;
+		--no-attach) do_attach=0; shift ;;
+		*) die "unknown option: $1 (see claude-team help)" ;;
+		esac
+	done
+	[[ "$CODERS" =~ ^[1-9]$ ]] || die "the number of coders must be between 1 and 9"
+	command -v tmux >/dev/null || die "tmux is required"
+	command -v claude >/dev/null || die "claude is required"
+	load_project
+
+	if running; then
+		echo "The team of $SLUG is already running."
+		[ "$do_attach" = 1 ] && attach
+		return 0
+	fi
+
+	git -C "$ROOT" rev-parse --verify --quiet HEAD >/dev/null \
+		|| die "the repository has no commit yet: make a first commit"
+	BASE="$(git -C "$ROOT" symbolic-ref --quiet --short HEAD)" \
+		|| die "HEAD is detached: check out the branch the team should work from"
+
+	warn_if_untrusted
+	setup_worktrees
+	printf '%s\n' "$BASE" >"$STATE/base"
+	write_roster
+	write_member orchestrator orchestrator "$ROOT"
+	local i
+	for i in $(seq 1 "$CODERS"); do
+		write_member "coder-$i" coder "$WT_DIR/team-coder-$i"
+	done
+	write_member verifier verifier "$WT_DIR/team-verifier"
+	open_tmux
+
+	echo "Team $TS started: orchestrator, $CODERS coders, verifier ($MODEL, base: $BASE)."
+	echo "Talk to the orchestrator (left pane). Ctrl-b d to detach, 'claude-team attach' to come back."
+	if [ "$do_attach" = 1 ]; then attach; fi
+}
+
+# ---------- status ----------
+
+cmd_status() {
+	load_project
+	local base path name branch ahead dirty
+	base="$(saved_base)"
+	if running; then
+		echo "Team $TS: running (claude-team attach)"
+	else
+		echo "Team $TS: not running (claude-team start)"
+	fi
+	echo "Base branch: ${base:-?}"
+	echo
+
+	if command -v python3 >/dev/null && running; then
+		echo "Sessions:"
+		claude agents --json 2>/dev/null | python3 -I -c '
+import json, sys
+prefix = sys.argv[1]
+try:
+    rows = json.load(sys.stdin)
+except ValueError:
+    rows = []
+found = [r for r in rows if str(r.get("name", "")).startswith(prefix)]
+for r in sorted(found, key=lambda r: r["name"]):
+    print("  %-32s %s" % (r["name"], r.get("status", "?")))
+if not found:
+    print("  (none registered yet)")
+' "$SLUG-"
+		echo
+	fi
+
+	echo "Worktrees:"
+	local any=0
+	for path in "$WT_DIR"/team-*; do
+		[ -d "$path" ] || continue
+		any=1
+		name="$(basename "$path")"
+		branch="$(git -C "$path" symbolic-ref --quiet --short HEAD || echo "detached @ $(git -C "$path" rev-parse --short HEAD)")"
+		ahead="-"
+		if [ -n "$base" ] && [[ "$branch" == team/* ]]; then
+			ahead="$(git -C "$ROOT" rev-list --count "$base..$branch" 2>/dev/null || echo "?") ahead"
+		fi
+		dirty="$(git -C "$path" status --porcelain | wc -l | tr -d ' ')"
+		printf '  %-16s %-26s %-10s %s uncommitted\n' "$name" "$branch" "$ahead" "$dirty"
+	done
+	[ "$any" = 1 ] || echo "  (none)"
+
+	if [ -f "$STATE/board.md" ]; then
+		echo
+		cat "$STATE/board.md"
+	fi
+}
+
+# ---------- stop / clean ----------
+
+cmd_stop() {
+	load_project
+	running || die "no team is running for $SLUG"
+	tmux kill-session -t "=$TS"
+	echo "Team $TS stopped. Worktrees and branches are kept: 'claude-team start' reopens it."
+}
+
+cmd_clean() {
+	local force=0
+	[ "${1:-}" = "--force" ] && force=1
+	load_project
+	running && die "the team is running: 'claude-team stop' first"
+	local base path branch ahead dirty problems=0
+	base="$(saved_base)"
+
+	for path in "$WT_DIR"/team-coder-*; do
+		[ -d "$path" ] || continue
+		branch="$(git -C "$path" symbolic-ref --quiet --short HEAD || true)"
+		dirty="$(git -C "$path" status --porcelain | wc -l | tr -d ' ')"
+		ahead=0
+		if [ -n "$branch" ] && [ -n "$base" ]; then
+			ahead="$(git -C "$ROOT" rev-list --count "$base..$branch")"
+		fi
+		if [ "$dirty" != 0 ] || [ "$ahead" != 0 ]; then
+			echo "$(basename "$path"): $dirty uncommitted changes, $ahead commits not merged into $base"
+			problems=$((problems + 1))
+		fi
+	done
+	if [ "$problems" != 0 ] && [ "$force" = 0 ]; then
+		die "unmerged work found: merge it first, or run 'claude-team clean --force' to delete it"
+	fi
+
+	for path in "$WT_DIR"/team-*; do
+		[ -d "$path" ] || continue
+		branch="$(git -C "$path" symbolic-ref --quiet --short HEAD || true)"
+		git -C "$ROOT" worktree remove --force "$path"
+		if [[ "$branch" == team/* ]]; then
+			git -C "$ROOT" branch --quiet -D "$branch"
+		fi
+		echo "removed $(basename "$path")${branch:+ and branch $branch}"
+	done
+	git -C "$ROOT" worktree prune
+	rmdir "$WT_DIR" 2>/dev/null || true
+	rm -rf "$STATE"
+	echo "Team $TS cleaned."
+}
+
+# ---------- install ----------
+
+cmd_install() {
+	local bin="$HOME/.local/bin" dst
+	dst="$bin/claude-team"
+	mkdir -p "$bin"
+	if [ -L "$dst" ] && [ "$(readlink -f "$dst")" = "$SELF" ]; then
+		echo "ok      $dst"
+	elif [ -e "$dst" ] || [ -L "$dst" ]; then
+		die "$dst already exists and is not a link to this script: move it away first"
+	else
+		ln -s "$SELF" "$dst"
+		echo "linked  $dst -> $SELF"
+	fi
+	case ":$PATH:" in
+	*":$bin:"*) ;;
+	*) echo "warning: $bin is not in your PATH; add it to your shell config" ;;
+	esac
+}
+
+# ---------- main ----------
+
+cmd="${1:-start}"
+[ $# -gt 0 ] && shift
+case "$cmd" in
+start) cmd_start "$@" ;;
+--coders | --coders=* | --no-attach) cmd_start "$cmd" "$@" ;;
+attach) load_project; running || die "no team is running for $SLUG (claude-team start)"; attach ;;
+status) cmd_status ;;
+stop) cmd_stop ;;
+clean) cmd_clean "$@" ;;
+install) cmd_install ;;
+help | -h | --help) usage ;;
+*) die "unknown command: $cmd (see claude-team help)" ;;
+esac
