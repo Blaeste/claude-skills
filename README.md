@@ -34,7 +34,12 @@ ln -s "$PWD/skills/tools/link-skill" ~/.claude/skills/link-skill
 Then type `/link-skill` in Claude Code to link all the other skills.
 
 
+## Team workflow
+
+`team/claude-team` runs an orchestrator, 3 coders and a verifier as Claude Code sessions side by side in tmux, each coder in its own git worktree. Install it once with `team/claude-team install`, then run `claude-team` from any git repository. See [Team workflow](docs/team-workflow.md).
+
 ## Docs
 
 - [Adding a skill](docs/adding-a-skill.md)
+- [Team workflow](docs/team-workflow.md)
 
